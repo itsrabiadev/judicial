@@ -1,0 +1,49 @@
+# ============================================================
+#  newsreader — WordPress .gitignore
+#  Strategy: ignore everything, then whitelist ONLY what we built.
+#  Nothing from WordPress core, no 3rd-party plugins or themes.
+# ============================================================
+
+
+# ── Step 1: Ignore the entire project root ───────────────────
+/*
+
+# ── Step 2: Whitelist root config stubs only ─────────────────
+!.gitignore
+!wp-config-sample.php
+!index.php
+!.htaccess
+
+# ── Step 3: Open wp-content for selective whitelisting ───────
+!wp-content/
+
+# Ignore everything inside wp-content first ...
+wp-content/*
+
+# ... then whitelist only the themes directory
+!wp-content/themes/
+
+# ── Step 4: Inside themes/ — ignore everything ... ───────────
+wp-content/themes/*
+
+# ... then whitelist only our custom theme
+!wp-content/themes/newsreader/
+
+# ── Step 5: Track ALL files inside newsreader recursively ───────────
+!wp-content/themes/newsreader/**
+
+# ── Step 6: Re-ignore generated / local files inside newsreader ─────
+wp-content/themes/newsreader/node_modules/
+wp-content/themes/newsreader/.cache/
+wp-content/themes/newsreader/assets/css/*.map
+wp-content/themes/newsreader/assets/js/*.map
+
+
+# ── OS & editor noise ────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+desktop.ini
