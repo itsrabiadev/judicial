@@ -177,40 +177,129 @@ if ( ! function_exists( 'jw_petition_hidden_post_status_admin_footer' ) ) {
 		}
 
 		$hidden_label = jw_get_petition_hidden_status_label();
-		$is_hidden    = ( 'rejected' === $post->post_status );
+		$status_labels = array(
+			'rejected' => $hidden_label,
+			'draft'    => _x( 'Draft', 'post status', 'default' ),
+			'publish'  => _x( 'Published', 'post status', 'default' ),
+			'pending'  => _x( 'Pending Review', 'post status', 'default' ),
+			'private'  => _x( 'Private', 'post status', 'default' ),
+			'future'   => _x( 'Scheduled', 'post status', 'default' ),
+		);
 		?>
 <script>
 jQuery(function($) {
-	function jwSetPetitionHiddenStatus() {
-		var label = <?php echo wp_json_encode( $hidden_label ); ?>,
-			$select = $('#post_status');
+	var statusLabels = <?php echo wp_json_encode( $status_labels ); ?>,
+		currentStatus = <?php echo wp_json_encode( $post->post_status ); ?>;
+
+	function jwEnsurePetitionStatusOptions() {
+		var $select = $('#post_status'),
+			extraOptions = [
+				{ value: 'publish', text: statusLabels.publish },
+				{ value: 'pending', text: statusLabels.pending },
+				{ value: 'private', text: statusLabels.private },
+				{ value: 'rejected', text: statusLabels.rejected }
+			];
 
 		if ( ! $select.length ) {
 			return;
 		}
 
-		if ( ! $select.find('option[value="rejected"]').length ) {
-			$select.append($('<option>', { value: 'rejected', text: label }));
-		}
+		extraOptions.forEach(function(option) {
+			if ( ! $select.find('option[value="' + option.value + '"]').length ) {
+				$select.append($('<option>', option));
+			}
+		});
+	}
 
-		if ( <?php echo $is_hidden ? 'true' : 'false'; ?> || $('#hidden_post_status').val() === 'rejected' || $select.val() === 'rejected' ) {
-			$select.val('rejected');
-			$('#hidden_post_status').val('rejected');
-			$('#post-status-display').text(label);
+	function jwSyncPetitionStatusDisplay(status) {
+		if ( statusLabels[status] ) {
+			$('#post-status-display').text(statusLabels[status]);
 		}
 	}
 
-	jwSetPetitionHiddenStatus();
-	$(window).on('load', jwSetPetitionHiddenStatus);
+	function jwApplyPetitionStatus(status) {
+		if ( ! status ) {
+			return;
+		}
 
-	$(document).on('click', '.save-post-status', function() {
+		jwEnsurePetitionStatusOptions();
+		$('#post_status').val(status);
+		$('#hidden_post_status').val(status);
+		jwSyncPetitionStatusDisplay(status);
+	}
+
+	jwEnsurePetitionStatusOptions();
+
+	if ( 'rejected' === currentStatus ) {
+		jwApplyPetitionStatus('rejected');
+	}
+
+	// Initialize draft button visibility based on current status
+	var initialStatus = $('#post_status').val();
+	if ( initialStatus === 'publish' || initialStatus === 'private' || initialStatus === 'future' ) {
+		$('button:contains("Save Draft")').hide();
+	}
+
+	// Live preview in "Status: …" while the dropdown is open.
+	$(document).on('change', '#post_status', function() {
+		var newStatus = $(this).val();
+		jwSyncPetitionStatusDisplay(newStatus);
+		
+		// Hide "Save Draft" button when changing to publish/private/future statuses
+		var $draftButton = $('button:contains("Save Draft")');
+		if ( newStatus === 'publish' || newStatus === 'private' || newStatus === 'future' ) {
+			$draftButton.hide();
+		} else {
+			$draftButton.show();
+		}
+	});
+
+	// Capture the choice before core updateText() resets #post_status to #hidden_post_status.
+	document.addEventListener('click', function(event) {
+		var target = event.target;
+		if ( ! target || ! target.classList.contains('save-post-status') ) {
+			return;
+		}
+
+		var select = document.getElementById('post_status');
+		if ( ! select || ! select.value ) {
+			return;
+		}
+
+		var status = select.value;
 		setTimeout(function() {
-			if ( $('#post_status').val() === 'rejected' ) {
-				$('#hidden_post_status').val('rejected');
-				$('#post-status-display').text(<?php echo wp_json_encode( $hidden_label ); ?>);
+			jwApplyPetitionStatus(status);
+			
+			// Hide "Save Draft" button based on the confirmed status
+			var $draftButton = $('button:contains("Save Draft")');
+			if ( status === 'publish' || status === 'private' || status === 'future' ) {
+				$draftButton.hide();
+			} else {
+				$draftButton.show();
 			}
 		}, 0);
+	}, true);
+
+	// Restore label after Cancel.
+	$(document).on('click', '.cancel-post-status', function() {
+		setTimeout(function() {
+			jwSyncPetitionStatusDisplay($('#hidden_post_status').val());
+		}, 0);
 	});
+
+	// Ensure the chosen status is what gets submitted.
+	var postForm = document.getElementById('post');
+	if ( postForm ) {
+		postForm.addEventListener('submit', function() {
+			var select = document.getElementById('post_status');
+			var hidden = document.getElementById('hidden_post_status');
+			if ( select && select.value ) {
+				if ( hidden ) {
+					hidden.value = select.value;
+				}
+			}
+		}, true);
+	}
 });
 </script>
 		<?php
@@ -222,24 +311,26 @@ jQuery(function($) {
 
 if ( ! function_exists( 'jw_preserve_petition_hidden_status_on_save' ) ) {
 	/**
-	 * Keep Hidden status when updating a petition (WordPress treats Update like Publish).
+	 * Preserve "Hidden" status ONLY when no explicit status is submitted.
+	 * An explicit status choice from the editor always wins, so a Hidden
+	 * petition can be moved to Draft / Pending / Published / Private.
 	 */
 	function jw_preserve_petition_hidden_status_on_save( $data, $postarr ) {
 		if ( empty( $data['post_type'] ) || 'petitions' !== $data['post_type'] ) {
 			return $data;
 		}
 
-		if ( ! empty( $_POST['post_status'] ) && 'rejected' === sanitize_key( wp_unslash( $_POST['post_status'] ) ) ) {
-			$data['post_status'] = 'rejected';
+		// If the editor submitted an explicit status, honor it unconditionally.
+		// This is what lets a Hidden petition be changed to any other status.
+		if ( ! empty( $_POST['post_status'] ) ) {
+			$data['post_status'] = sanitize_key( wp_unslash( $_POST['post_status'] ) );
 			return $data;
 		}
 
+		// No status field at all (programmatic save, REST without status, etc.):
+		// keep the petition Hidden if that is its current stored status.
 		$post_id = ! empty( $postarr['ID'] ) ? (int) $postarr['ID'] : 0;
-		if ( ! $post_id || 'rejected' !== get_post_field( 'post_status', $post_id ) ) {
-			return $data;
-		}
-
-		if ( ! empty( $_POST['hidden_post_status'] ) && 'rejected' === sanitize_key( wp_unslash( $_POST['hidden_post_status'] ) ) ) {
+		if ( $post_id && 'rejected' === get_post_field( 'post_status', $post_id ) ) {
 			$data['post_status'] = 'rejected';
 		}
 
