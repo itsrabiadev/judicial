@@ -196,6 +196,7 @@ if (!class_exists('Newsreader')) {
             require_once get_theme_file_path('/inc/services/DeployerServiceProvider.php');
             require_once get_theme_file_path('/inc/helpers.php');
             require_once get_theme_file_path('/inc/petition-helpers.php');
+            require_once get_theme_file_path('/inc/smart-search-and-operator.php');
             // Integrate Deployer with Gravity Forms
            // require_once get_theme_file_path('/inc/deployer-gravityforms.php');
 
