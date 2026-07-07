@@ -4,8 +4,6 @@
  */
 ?>
 
-<div class="cs-header-before"></div>
-
 <!--<header class="cs-header cs-header-stretch" <?php //csco_header_attr(); ?>>
     <div class="cs-header__outer">
         <div class="cs-container">

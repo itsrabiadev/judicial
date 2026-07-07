@@ -1930,6 +1930,21 @@ body.single-post section.post {
     padding-top: 15px;
 }
 
+body.single .cs-site-content,
+body.single-post .cs-site-content {
+    margin-top: 0;
+}
+
+body.single .cs-site-content > .cs-container,
+body.single-post .cs-site-content > .cs-container {
+    padding-top: 15px;
+}
+
+body.single .cs-entry__header-standard,
+body.single-post .cs-entry__header-standard {
+    margin-top: 0;
+}
+
 .m-b-35 {
     margin-bottom: 35px;
 }
