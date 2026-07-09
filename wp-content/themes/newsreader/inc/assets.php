@@ -107,7 +107,10 @@ if ( ! function_exists( 'csco_enqueue_scripts' ) ) {
 
         // Register theme styles.
 		wp_register_style( 'csco-styles', csco_style( get_template_directory_uri() . '/style.css' ), array(), $version );
-		wp_register_style( 'csco-custom-styles', csco_style( get_template_directory_uri() . '/assets/css/custom.css' ), array(), $version );
+
+		$custom_css_path = get_template_directory() . '/assets/css/custom.css';
+		$custom_css_ver  = file_exists( $custom_css_path ) ? filemtime( $custom_css_path ) : $version;
+		wp_register_style( 'csco-custom-styles', csco_style( get_template_directory_uri() . '/assets/css/custom.css' ), array( 'csco-styles' ), $custom_css_ver );
 
 		// Enqueue theme styles.
 		wp_enqueue_style( 'csco-styles' );
