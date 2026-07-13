@@ -269,7 +269,8 @@ $this->add_control('slides_per_view_mobile', [
                 data-autoplay="<?php echo esc_attr($settings['autoplay']); ?>"
                 data-autoplay-delay="<?php echo esc_attr($settings['autoplay_delay']); ?>"
                 data-slide-speed="<?php echo esc_attr($settings['slide_speed']); ?>"
-                data-slides-gap="<?php echo esc_attr($settings['slides_gap']); ?>">
+                data-slides-gap="<?php echo esc_attr($settings['slides_gap']); ?>"
+                data-post-count="<?php echo esc_attr($query->post_count); ?>">
 
                 <div class="swiper-wrapper">
 
@@ -430,8 +431,11 @@ $this->add_control('slides_per_view_mobile', [
             <script>
                 jQuery(function ($) {
                     const slider = document.querySelector('#<?php echo $uid; ?>');
+                    const postCount = Number(slider.dataset.postCount);
+                    const slidesPerView = Number(slider.dataset.slidesPerView) || 1;
+                    const enableLoop = postCount >= slidesPerView * 2;
                     new Swiper(slider, {
-                        loop: true,
+                        loop: enableLoop,
                         speed: Number(slider.dataset.slideSpeed),
                         spaceBetween: Number(slider.dataset.slidesGap),
                         autoplay: slider.dataset.autoplay === 'yes' ? {
@@ -443,16 +447,16 @@ $this->add_control('slides_per_view_mobile', [
                             prevEl: '#<?php echo $uid; ?> .swiper-button-prev'
                         },
                         breakpoints: {
-            0: {
-                slidesPerView: Number(slider.dataset.slidesPerViewMobile)
-            },
-            768: {
-                slidesPerView: Number(slider.dataset.slidesPerViewTablet)
-            },
-            1024: {
-                slidesPerView: Number(slider.dataset.slidesPerView)
-            }
-        }
+                            0: {
+                                slidesPerView: Number(slider.dataset.slidesPerViewMobile)
+                            },
+                            768: {
+                                slidesPerView: Number(slider.dataset.slidesPerViewTablet)
+                            },
+                            1024: {
+                                slidesPerView: Number(slider.dataset.slidesPerView)
+                            }
+                        }
                     });
                 });
             </script>

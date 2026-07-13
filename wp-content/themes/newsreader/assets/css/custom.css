@@ -3212,3 +3212,9 @@ padding-left: 32px;
 #about_tabs .wysiwyg-content img{
  margin: 0px !important;
 }
+
+/* Donation form: hide checkbox and its label */
+body.single-donation_pages #billing-toggle,
+body.single-donation_pages label[for="billing-toggle"] {
+    display: none !important;
+}
