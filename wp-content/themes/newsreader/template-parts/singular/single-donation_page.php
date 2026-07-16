@@ -496,7 +496,7 @@ $preselectRecurringCheckbox = $preselectRecurring;
                                                        v-model="formFields.isMobileAttached"
                                                        class="is-checkradio is-info has-bg-active" on-blur-effect-flag-disabled="1" on-blur-effect-flag-disabled-billing="1"/>
                                                 <label for="is-mobile-attached" class="checkradio-label is-marginless">
-                                                    By providing my mobile phone number, I opt in to receive text alerts, updates, and news messages via SMS/MMS from Judicial Watch. Donations may be solicited. Additional message and data rates may apply. Text STOP to opt-out. Text HELP for assistance or call 888-593-8442. Message frequency may vary. SMS opt-in data or phone numbers will not be sold, rented, or shared with third parties.<a href="https://tandcs.us/jwi" target="_blank">Terms & conditions/privacy policy apply</a>
+                                                    By providing my mobile phone number, I opt in to receive text alerts, updates, and news messages via SMS/MMS from Judicial Watch. Donations may be solicited. Additional message and data rates may apply. Text STOP to opt-out. Text HELP for assistance or call 888-593-8442. Message frequency may vary. SMS opt-in data or phone numbers will not be sold, rented, or shared with third parties. <a href="https://tandcs.us/jwi" target="_blank">Terms & conditions/privacy policy apply</a>
                                                 </label>
                                             </div>
 
@@ -1209,7 +1209,7 @@ $preselectRecurringCheckbox = $preselectRecurring;
                                                v-model="formFields.isMobileAttached"
                                                class="is-checkradio is-info has-bg-active" on-blur-effect-flag-disabled="1" on-blur-effect-flag-disabled-billing="1"/>
                                         <label for="is-mobile-attached" class="checkradio-label is-marginless">
-                                                                By providing my mobile phone number, I opt in to receive text alerts, updates, and news messages via SMS/MMS from Judicial Watch. Donations may be solicited. Additional message and data rates may apply. Text STOP to opt-out. Text HELP for assistance or call 888-593-8442. Message frequency may vary. SMS opt-in data or phone numbers will not be sold, rented, or shared with third parties.<a href="https://tandcs.us/jwi" target="_blank">Terms & conditions/privacy policy apply</a>
+                                                                By providing my mobile phone number, I opt in to receive text alerts, updates, and news messages via SMS/MMS from Judicial Watch. Donations may be solicited. Additional message and data rates may apply. Text STOP to opt-out. Text HELP for assistance or call 888-593-8442. Message frequency may vary. SMS opt-in data or phone numbers will not be sold, rented, or shared with third parties. <a href="https://tandcs.us/jwi" target="_blank">Terms & conditions/privacy policy apply</a>
     
                                     </label>
                                     </div>
