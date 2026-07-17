@@ -209,17 +209,10 @@ if ( ! function_exists( 'csco_get_meta_date' ) ) {
 
 		$output = '<' . esc_html( $tag ) . ' class="cs-meta-date">';
 
+		// Always use the original publish date (post_date), not post_modified.
+		// Editing a post in WP admin updates the modified date and was incorrectly
+		// surfacing that on single posts when misc_published_date was unchecked.
 		$time_string = get_the_date();
-
-		// Listings and Read more sort by post_date; show publish date only on those.
-		$use_modified_date = is_singular()
-			&& ! get_query_var( 'csco_in_read_next' )
-			&& get_the_time( 'd.m.Y H:i' ) !== get_the_modified_time( 'd.m.Y H:i' )
-			&& ! get_theme_mod( 'misc_published_date', true );
-
-		if ( $use_modified_date ) {
-			$time_string = get_the_modified_date();
-		}
 
 		/**
 		 * The csco_post_meta_date_output hook.
