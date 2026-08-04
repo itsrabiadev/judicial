@@ -119,9 +119,23 @@ if ('archive' === $options['location']) {
 
     <?php if (!empty($thumbnails['medium_large']['src'])) : ?>
         <div class="container-featured-image no-printme">
-            <img src="<?php echo esc_url($thumbnails['medium_large']['src']); ?>"
-                 alt="<?php echo esc_attr($thumbnails['medium_large']['alt']); ?>"
-                 class="post-featured-image">
+            <?php if ( ! empty( $thumbnail_id ) ) : ?>
+                <?php
+                // Real attachment (post's own featured image): use the responsive-image
+                // API so srcset/sizes render, instead of a single fixed-size URL.
+                echo wp_get_attachment_image(
+                    $thumbnail_id,
+                    'medium_large',
+                    false,
+                    array( 'class' => 'post-featured-image' )
+                );
+                ?>
+            <?php else : ?>
+                <?php // Cover image / PDF-generated preview: these are plain URLs (ACF field, not an attachment ID), so no srcset is available here. ?>
+                <img src="<?php echo esc_url($thumbnails['medium_large']['src']); ?>"
+                     alt="<?php echo esc_attr($thumbnails['medium_large']['alt']); ?>"
+                     class="post-featured-image">
+            <?php endif; ?>
         </div>
     <?php endif; ?>
 

@@ -3218,3 +3218,42 @@ body.single-donation_pages #billing-toggle,
 body.single-donation_pages label[for="billing-toggle"] {
     display: none !important;
 }
+
+/* ------------------------------------------------------------------------
+ * CLS (Cumulative Layout Shift) safety nets
+ *
+ * Reserve layout space for above-the-fold media before it loads, so the
+ * surrounding content doesn't jump once images/fonts arrive. These are
+ * additive min-height/aspect-ratio guards, not visual redesigns — they
+ * should be invisible when everything loads normally and only matter on a
+ * slow connection or a cache miss. Verify against the live Lighthouse
+ * layout-shift overlay after deploying; these are informed by the
+ * Elementor Hero widget (cs-hero) and the theme's own entry thumbnails,
+ * not a DevTools trace, since that requires the live site.
+ * ------------------------------------------------------------------------ */
+
+/* Hero widget (inc/elementor/hero.php): reserve height via the same custom
+   property the widget's "Height" control already writes, so a missing/slow
+   thumbnail doesn't collapse the section to 0 height. */
+.cs-hero .cs-overlay-ratio {
+    min-height: var( --cs-hero-image-height, 320px );
+}
+
+/* Site header: fixed min-height so the mobile/desktop logo swap and menu
+   fonts loading in don't shift the header's own height after first paint. */
+.cs-header.cs-header-two {
+    min-height: 72px;
+}
+
+/* Entry thumbnails across archive/singular templates: the_post_thumbnail()
+   and wp_get_attachment_image() already emit width/height HTML attributes,
+   which modern browsers use to reserve the correct intrinsic aspect ratio
+   automatically — but only if `height` isn't fixed elsewhere. `height: auto`
+   is what preserves that native behavior; do not replace this with a fixed
+   px height or the browser's own ratio reservation breaks. (Authored CSS
+   can't replicate that ratio itself — `aspect-ratio: attr(...)` is not
+   supported outside the browser's own default stylesheet.) */
+.cs-entry__thumbnail img,
+.post-featured-image {
+    height: auto;
+}
