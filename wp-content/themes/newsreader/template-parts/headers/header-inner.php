@@ -360,6 +360,8 @@ $defaultImage = get_theme_file_uri('assets/images/logo-361x85.png');
 				<span class="cs-header__search-toggle" role="button" aria-label="Search">
 			<i class="cs-icon cs-icon-search"></i>
 		</span>
+                <a class="cs-button cs-header__custom-button cs-header__custom-button-mobile" href="<?php echo home_url(); ?>/donate/make-a-contribution-2/" target="_blank">
+                    Donate </a>
             </div>
         </div>
          <!-- Mobile Menu -->

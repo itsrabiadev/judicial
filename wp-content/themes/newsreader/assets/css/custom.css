@@ -3257,3 +3257,33 @@ body.single-donation_pages label[for="billing-toggle"] {
 .post-featured-image {
     height: auto;
 }
+
+/* Mobile header Donate button (template-parts/headers/header-inner.php,
+   .cs-header__inner-mobile .cs-col-right): the theme's own
+   .cs-header__custom-button rule (style.css) is `display:none` below the
+   1200px breakpoint, so without this override the button added to the
+   mobile header row never becomes visible. */
+.cs-header__inner-mobile .cs-header__custom-button-mobile {
+    display: inline-flex;
+    align-items: center;
+    background-color: var(--cs-color-button);
+    color: var(--cs-color-button-contrast);
+    border-radius: 4px;
+    padding: 0.5rem 0.875rem;
+    margin-left: 8px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+    text-decoration: none;
+}
+.cs-header__inner-mobile .cs-header__custom-button-mobile:focus,
+.cs-header__inner-mobile .cs-header__custom-button-mobile:hover {
+    background-color: var(--cs-color-button-hover);
+    color: var(--cs-color-button-hover-contrast);
+}
+@media (min-width: 992px) {
+    .cs-header__inner-mobile .cs-header__custom-button-mobile {
+        display: none;
+    }
+}
