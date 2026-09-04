@@ -3269,9 +3269,9 @@ body.single-donation_pages label[for="billing-toggle"] {
     background-color: var(--cs-color-button);
     color: var(--cs-color-button-contrast);
     border-radius: 4px;
-    padding: 0.5rem 0.875rem;
-    margin-left: 8px;
-    font-size: 0.75rem;
+    padding: 0.4rem 0.625rem;
+    margin-left: 6px;
+    font-size: 0.6875rem;
     font-weight: 700;
     line-height: 1.2;
     white-space: nowrap;
@@ -3285,5 +3285,76 @@ body.single-donation_pages label[for="billing-toggle"] {
 @media (min-width: 992px) {
     .cs-header__inner-mobile .cs-header__custom-button-mobile {
         display: none;
+    }
+}
+
+/* Shrink the mobile search icon's hit area too (style.css sets a fixed 32px
+   box with a 24px glyph) so the col-right group takes up less room — paired
+   with the smaller Donate button above, this pulls the centered logo (see
+   the .cs-col-center grid rules further down) visually closer to true
+   center, since the grid's center track sits between the (fixed, small)
+   burger column and whatever width col-right ends up needing. */
+.cs-header__inner-mobile .cs-header__search-toggle {
+    width: 24px;
+}
+.cs-header__inner-mobile .cs-header__search-toggle .cs-icon {
+    width: 20px;
+    height: 20px;
+    font-size: 0.95rem;
+}
+
+/* Mobile header logo centering (template-parts/headers/header-inner.php):
+   the logo lives in its own .cs-col-center between the burger toggle and the
+   search/donate group. A 3-column grid (auto / 1fr / auto) reserves exactly
+   the space each side needs and centers the logo in what's left over.
+
+   Note: this is a deliberate compromise, not perfect centering. Pinning the
+   two outer columns to equal fixed widths *would* put the logo at exact
+   dead-center on every screen — but on common ~360-410px phones, after
+   subtracting the container's own ~24px side padding, matching the
+   search+Donate column's ~118px width on both sides leaves as little as
+   ~76px for the logo, which reads as too small. `auto` sizing instead lets
+   the (much narrower) burger column stay narrow, so the logo keeps a
+   comfortable size — at the cost of sitting visibly left of true center,
+   since the wider search+Donate side pulls the center track's midpoint left.
+   `min-width: 0` on the center column and its link is required because the
+   plain <img> (no width/height attributes) would otherwise carry its own
+   intrinsic 394px width into the flex/grid item's automatic minimum size,
+   which blocks the 1fr track from ever shrinking below that on narrow
+   screens and pushes the search/donate group past the header's edge. Capping
+   the image at 170px (rather than a fixed width) lets it size down further
+   on very narrow phones instead of overflowing. `!important` on `display` is
+   required because `template-parts/header-judicial.php` still hardcodes a
+   second, unregistered `<link>` to the legacy assets/assets/css/style.css
+   (loaded outside the wp_head() queue, after custom.css in source order)
+   which also sets `.cs-header__inner-mobile { display: flex }` with no media
+   query, and same-specificity + later-in-DOM would otherwise win over this
+   rule regardless of viewport. */
+@media (max-width: 991.98px) {
+    .cs-header__inner-mobile {
+        display: grid !important;
+        grid-template-columns: auto 1fr auto;
+    }
+    .cs-header__inner-mobile .cs-col-left,
+    .cs-header__inner-mobile .cs-col-right {
+        flex: none;
+        min-width: 0;
+    }
+    .cs-header__inner-mobile .cs-col-center {
+        display: flex;
+        justify-content: center;
+        min-width: 0;
+    }
+    .cs-header__inner-mobile .cs-col-center a {
+        display: block;
+        min-width: 0;
+        max-width: 100%;
+        margin-left: 18px;
+    }
+    .cs-header__inner-mobile .cs-col-center img {
+        width: 100%;
+        max-width: 170px;
+        height: auto;
+        min-width: 0;
     }
 }

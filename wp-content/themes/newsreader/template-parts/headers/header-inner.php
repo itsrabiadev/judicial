@@ -349,12 +349,12 @@ $defaultImage = get_theme_file_uri('assets/images/logo-361x85.png');
                       aria-label="Mobile menu button">
 					<i class="cs-icon cs-icon-menu"></i>
 				</span>
-
+            </div>
+            <div class="cs-header__col cs-col-center">
                <a href="<?php echo home_url(); ?>">
                 <img src="<?php echo get_template_directory_uri(); ?>/assets/assets/uploads/2024/05/judicial-watch-logo3.jpg"
                      alt="Judicial Watch">
                      </a>
-
             </div>
             <div class="cs-header__col cs-col-right">
 				<span class="cs-header__search-toggle" role="button" aria-label="Search">
