@@ -3268,10 +3268,10 @@ body.single-donation_pages label[for="billing-toggle"] {
     align-items: center;
     background-color: var(--cs-color-button);
     color: var(--cs-color-button-contrast);
-    border-radius: 4px;
-    padding: 0.4rem 0.625rem;
+    border-radius: 999px;
+    padding: 0.4rem clamp(0.5rem, 2.5vw, 0.75rem);
     margin-left: 6px;
-    font-size: 0.6875rem;
+    font-size: clamp(0.625rem, 2.2vw, 0.6875rem);
     font-weight: 700;
     line-height: 1.2;
     white-space: nowrap;
@@ -3310,20 +3310,24 @@ body.single-donation_pages label[for="billing-toggle"] {
 
    Note: this is a deliberate compromise, not perfect centering. Pinning the
    two outer columns to equal fixed widths *would* put the logo at exact
-   dead-center on every screen — but on common ~360-410px phones, after
-   subtracting the container's own ~24px side padding, matching the
-   search+Donate column's ~118px width on both sides leaves as little as
-   ~76px for the logo, which reads as too small. `auto` sizing instead lets
-   the (much narrower) burger column stay narrow, so the logo keeps a
-   comfortable size — at the cost of sitting visibly left of true center,
-   since the wider search+Donate side pulls the center track's midpoint left.
-   `min-width: 0` on the center column and its link is required because the
-   plain <img> (no width/height attributes) would otherwise carry its own
-   intrinsic 394px width into the flex/grid item's automatic minimum size,
-   which blocks the 1fr track from ever shrinking below that on narrow
-   screens and pushes the search/donate group past the header's edge. Capping
-   the image at 170px (rather than a fixed width) lets it size down further
-   on very narrow phones instead of overflowing. `!important` on `display` is
+   dead-center on every screen — but on common ~360-410px phones, matching
+   the search+Donate column's width on both sides leaves too little room for
+   the logo. `auto` sizing instead lets the (much narrower) burger column
+   stay narrow, and the search icon/Donate button above are kept deliberately
+   compact (24px icon, tight button padding), so the 1fr center track — and
+   therefore the logo, which fills it at `width: 100%` — gets as much of the
+   header's width as possible. The tradeoff is that the logo sits visibly
+   left of true center, since the wider search+Donate side still pulls the
+   center track's midpoint left. `min-width: 0` on the center column and its
+   link is required because the plain <img> (no width/height attributes)
+   would otherwise carry its own intrinsic 394px width into the flex/grid
+   item's automatic minimum size, which blocks the 1fr track from ever
+   shrinking below that on narrow screens and pushes the search/donate group
+   past the header's edge. Capping the image at 260px (rather than a fixed
+   width) lets it size down further on very narrow phones instead of
+   overflowing, while still allowing it to grow close to that cap once the
+   1fr track has room (e.g. tablet-portrait widths near the 991.98px
+   breakpoint). `!important` on `display` is
    required because `template-parts/header-judicial.php` still hardcodes a
    second, unregistered `<link>` to the legacy assets/assets/css/style.css
    (loaded outside the wp_head() queue, after custom.css in source order)
@@ -3340,6 +3344,31 @@ body.single-donation_pages label[for="billing-toggle"] {
         flex: none;
         min-width: 0;
     }
+    /* style.css's `.cs-header__col.cs-col-right:not(:only-child)` gives
+       20px of left padding to separate the search icon from the Donate
+       button — on mobile that space is better spent on the logo, so zero
+       it out here. Repeating `.cs-header__col` (not just `.cs-col-right`)
+       matters: without it this selector ties style.css's on specificity
+       (3 classes/pseudo-classes each) and loses, since both stylesheets are
+       registered at the same priority and source order between them isn't
+       guaranteed — matching both classes plus the extra `.cs-header__inner-
+       mobile` ancestor (4 total) guarantees this wins outright. */
+    .cs-header__inner-mobile .cs-header__col.cs-col-right:not(:only-child) {
+        padding-left: 0;
+    }
+
+     .cs-header__inner-mobile .cs-header__col.cs-col-left:not(:only-child) {
+        padding-right: 0;
+    }
+    /* style.css's `.cs-header__inner-mobile .cs-header__col > *:not(:first-
+       child, .cs-header__offcanvas-toggle)` (8px) spaces out the search
+       icon/Donate button pair the same way; tighten it further on mobile.
+       Same specificity-tie problem as above (3 classes/pseudo-classes on
+       both sides) — prefixing with the `#page` ID (present in template-
+       parts/header-judicial.php) outweighs it regardless of source order. */
+    #page .cs-header__inner-mobile .cs-header__col > *:not(:first-child, .cs-header__offcanvas-toggle) {
+        margin-left: 5px;
+    }
     .cs-header__inner-mobile .cs-col-center {
         display: flex;
         justify-content: center;
@@ -3349,11 +3378,11 @@ body.single-donation_pages label[for="billing-toggle"] {
         display: block;
         min-width: 0;
         max-width: 100%;
-        margin-left: 18px;
+        margin-left: 6px;
     }
     .cs-header__inner-mobile .cs-col-center img {
         width: 100%;
-        max-width: 170px;
+        max-width: 260px;
         height: auto;
         min-width: 0;
     }
