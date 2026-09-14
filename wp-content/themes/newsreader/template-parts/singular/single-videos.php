@@ -139,9 +139,10 @@ if (!$relatedPosts) {
             if ($youtubeId):
                 ?>
                 <div class="responsive-media">
-                    <iframe width="<?php echo wp_is_mobile() ? '950' : '90%'; ?>" height="<?php echo wp_is_mobile() ? '534' : '534.375'; ?>"
+					<iframe width="<?php echo wp_is_mobile() ? '950' : '90%'; ?>" height="<?php echo wp_is_mobile() ? '534' : '534.375'; ?>"
                         src="https://www.youtube.com/embed/<?php echo esc_attr($youtubeId); ?>?rel=0&enablejsapi=1"
-                        frameborder="0" allow="autoplay; encrypted-media" class="media-item" allowfullscreen>
+                        frameborder="0" allow="autoplay; encrypted-media" class="media-item" allowfullscreen
+                        referrerpolicy="strict-origin-when-cross-origin">
                     </iframe>
                 </div>
             <?php endif; ?>

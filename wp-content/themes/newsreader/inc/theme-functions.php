@@ -894,8 +894,9 @@ if ( ! function_exists( 'csco_get_page_sidebar' ) ) {
 		if ( is_singular( 'donation_pages' ) ) {
 			return apply_filters( 'csco_page_sidebar', 'disabled' );
 		}
-		if ( is_singular( 'petitions' ) ) {
-			return apply_filters( 'csco_page_sidebar', 'disabled' );
+		$layoutType = get_field('layout_design_type');
+		if(is_singular('petitions') && in_array($layoutType,['featured_graphic','basic_simple'])){
+          return apply_filters( 'csco_page_sidebar', 'disabled' );
 		}
 
 		return apply_filters( 'csco_page_sidebar', 'right' );

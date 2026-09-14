@@ -128,7 +128,7 @@ if ( ! $backgroundImage ) {
 											<iframe width="750" height="421.875"
 												src="https://www.youtube.com/embed/<?php echo esc_attr( $mediaVideo ); ?>?rel=0&controls=0"
 												allow="autoplay; encrypted-media" frameborder="0"
-												allowfullscreen></iframe>
+												allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe>
 										</div>
 									<?php endif; ?>
 

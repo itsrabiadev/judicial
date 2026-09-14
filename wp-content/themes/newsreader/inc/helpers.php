@@ -224,8 +224,8 @@ function newsreader_get_related_posts( $postId, $acfKeys, $limit = 3 ) {
 	if ( count( $posts ) === 1 ) {
 		$posts = array_shift( $posts );
 	}
-
-	if ( is_array( $posts ) && ! empty( $posts ) ) {
+    
+    if ( is_array( $posts ) && ! empty( $posts ) ) {
 		usort(
 			$posts,
 			function ( $a, $b ) {

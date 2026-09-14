@@ -1991,7 +1991,8 @@ class CSCO_Posts extends Widget_Base
 										<div class="<?php echo esc_attr($entry_class); ?>">
 											<iframe width="555" height="312"
 												src="https://www.youtube.com/embed/<?php echo esc_attr($video_id); ?>?rel=0&enablejsapi=1"
-												frameborder="0" allow="autoplay; encrypted-media" allowfullscreen class="media-item">
+												frameborder="0" allow="autoplay; encrypted-media" allowfullscreen class="media-item"
+												referrerpolicy="strict-origin-when-cross-origin">
 											</iframe>
 
 											<div class="cs-entry__inner cs-entry__content">

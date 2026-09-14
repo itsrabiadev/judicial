@@ -530,8 +530,8 @@ class DeployerServiceProvider
 
         $xmlString = '<?xml version="1.0" encoding="UTF-8"?>
         <xmlrequest>
-               <username>judicialwatch</username>
-                <usertoken>453e5318ec0a29f3ec52c27207cae995c11ae694</usertoken>
+               <username>' . htmlspecialchars($this->apiUser) . '</username>
+                <usertoken>' . htmlspecialchars($this->apiKey) . '</usertoken>
                 <requesttype>subscribers</requesttype>
                 <requestmethod>IsSubscriberOnList</requestmethod>
                 <details>

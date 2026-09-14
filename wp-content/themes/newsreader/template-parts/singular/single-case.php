@@ -65,8 +65,9 @@ if ('archive' === $options['location']) {
                 $youtube_url = get_field('case_video') ?: 'https://www.youtube.com/embed/wQvQ72uJa6g?controls=0';
                 if ($youtube_url) :
                     ?>
-                    <iframe width="100%" height="500" src="<?php echo esc_url($youtube_url); ?>?controls=0"
-                            frameborder="0" allow="autoplay; encrypted-media" allowfullscreen></iframe>
+					<iframe width="100%" height="500" src="<?php echo esc_url($youtube_url); ?>?controls=0"
+                            frameborder="0" allow="autoplay; encrypted-media" allowfullscreen
+                            referrerpolicy="strict-origin-when-cross-origin"></iframe>
                 <?php endif; ?>
             </div>
         </div>

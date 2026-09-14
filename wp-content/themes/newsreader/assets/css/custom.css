@@ -3300,7 +3300,7 @@ body.single-donation_pages label[for="billing-toggle"] {
 .cs-header__inner-mobile .cs-header__search-toggle .cs-icon {
     width: 20px;
     height: 20px;
-    font-size: 0.95rem;
+    font-size: 1.5rem;
 }
 
 /* Mobile header logo centering (template-parts/headers/header-inner.php):

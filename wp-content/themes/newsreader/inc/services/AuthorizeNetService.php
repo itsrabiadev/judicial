@@ -29,16 +29,14 @@ class AuthorizeNetService
 
     public function __construct()
     {
+        // SECURITY: API credentials must live in wp-config.php, NOT in the theme.
+        // Add to wp-config.php on each environment, using a freshly ROTATED transaction key:
+        //   define('AUTHORIZENET_API_KEYS', ['id' => 'YOUR_LOGIN_ID', 'transaction_key' => 'YOUR_NEW_KEY']);
         if (!defined('AUTHORIZENET_API_KEYS')
             || !isset(AUTHORIZENET_API_KEYS['id'])
             || !isset(AUTHORIZENET_API_KEYS['transaction_key'])
         ) {
-            $prodKeys = [
-                //'transaction_key' => '38bL7YTp7v22ChVE',
-                'transaction_key' => '23Us2jTf29C7AxKM',
-                'id' => 'sn3a3V9uV'
-            ];
-            define('AUTHORIZENET_API_KEYS', $prodKeys);
+            throw new \Exception('Authorize.net API credentials are not configured. Define AUTHORIZENET_API_KEYS in wp-config.php.');
         }
 
         if (!defined('WP_SERVER_ENVIRONMENT')) {
@@ -83,6 +81,14 @@ class AuthorizeNetService
             ]);
         }
 
+        // SECURITY: server-side amount guard (defense-in-depth against $0 card-testing).
+        // Blocks $0/blank/non-numeric amounts even if the caller bypasses the front-end form.
+        $rawAmount = preg_replace('/[^0-9.]/', '', (string) data_get($postRequest, 'transaction_amount'));
+        $amount    = filter_var($rawAmount, FILTER_VALIDATE_FLOAT);
+        $minDonation = defined('JW_MIN_DONATION') ? (float) JW_MIN_DONATION : 1.0;
+        if ($amount === false || $amount < $minDonation) {
+            throw new \Exception('Invalid donation amount.');
+        }
 
         $monthlySubscription = data_get($postRequest, 'isMonthlyDonation');
         $customerDataType = new AnetAPI\CustomerDataType();
@@ -166,7 +172,10 @@ class AuthorizeNetService
         }
         $transactionRequestType->setPayment($paymentOne);
         $transactionRequestType->setBillTo($customerAddress);
-        $transactionRequestType->setCustomerIP(null);
+        // SECURITY/FRAUD: send the REAL donor IP so Authorize.net AFDS (velocity, regional,
+        // IP blocking) works. Previously hard-set to null, which caused Authorize.net to log
+        // the web server's IP instead of the donor's.
+        $transactionRequestType->setCustomerIP(function_exists('jw_client_ip') ? jw_client_ip() : (isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : null));
         $transactionRequestType->addToTransactionSettings($duplicateWindowSetting);
         $transactionRequestType->addToUserFields($trackingField);
 

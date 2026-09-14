@@ -172,7 +172,8 @@
 							<div class="modal-background"></div>
 							<div class="modal-content">
 								<iframe src="" frameborder="0" allow="autoplay; encrypted-media"
-									class="js-play-featured-video" allowfullscreen></iframe>
+									class="js-play-featured-video" allowfullscreen
+									referrerpolicy="strict-origin-when-cross-origin"></iframe>
 							</div>
 							<button class="modal-close is-large" aria-label="close"></button>
 						</div>

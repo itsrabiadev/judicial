@@ -1,4 +1,3 @@
-
 <?php
 /**
  * Newsreader functions and definitions
@@ -196,7 +195,7 @@ if (!class_exists('Newsreader')) {
             require_once get_theme_file_path('/inc/services/DeployerServiceProvider.php');
             require_once get_theme_file_path('/inc/helpers.php');
             require_once get_theme_file_path('/inc/petition-helpers.php');
-            require_once get_theme_file_path('/inc/smart-search-and-operator.php');
+			require_once get_theme_file_path('/inc/smart-search-and-operator.php');
             // Integrate Deployer with Gravity Forms
            // require_once get_theme_file_path('/inc/deployer-gravityforms.php');
 
@@ -226,9 +225,14 @@ function register_jw_settings_options_page()
 
 // Custom log function for donation events
 function jw_donation_log($message) {
-    $log_file = ABSPATH . 'donation.log';
+    // WP Engine's site root is NOT writable by PHP, so write to the uploads dir instead.
+    $up   = function_exists('wp_upload_dir') ? wp_upload_dir() : null;
+    $base = ($up && !empty($up['basedir'])) ? $up['basedir'] : WP_CONTENT_DIR . '/uploads';
+    $log_file = rtrim($base, '/') . '/donation.log';
     $date = date('Y-m-d H:i:s');
-    file_put_contents($log_file, "[$date] $message\n", FILE_APPEND);
+    @file_put_contents($log_file, "[$date] $message\n", FILE_APPEND);
+    // Backstop: also emit to the PHP error log (visible in the WP Engine portal → Logs).
+    error_log('JW_DONATION: ' . $message);
 }
 
 //removing lazyloading from logo
@@ -292,7 +296,7 @@ function jw_gform_pre_submission_add_deployer_metadata($form) {
         : 34;
 
     if (isset($_GET['clk'])) {
-        $_POST['click_id'] = (int) sanitize_text_field(wp_unslash($_GET['clk']));
+        $_POST['click_id'] = sanitize_text_field(wp_unslash($_GET['clk']));
     }
 
     $int_code = isset($_GET['int_code']) ? sanitize_text_field(wp_unslash($_GET['int_code'])) : '';
@@ -396,98 +400,283 @@ function jw_push_gform_submission_to_deployer($entry, $form) {
     }
 }
 
+/**
+ * ---------------------------------------------------------------------------
+ * Donation endpoint helpers (added for carding/fraud hardening)
+ * ---------------------------------------------------------------------------
+ */
+
+/**
+ * Real client IP behind a proxy/CDN (Cloudflare / WP Engine / AWS ALB).
+ * NEVER trust REMOTE_ADDR alone here — that is the edge/proxy address.
+ */
+if (!function_exists('jw_client_ip')) {
+    function jw_client_ip()
+    {
+        // TEMP DIAGNOSTIC — logs every candidate IP header to donation.log so we can
+        // see which one holds the real donor IP on WP Engine. Remove once confirmed.
+        if (function_exists('jw_donation_log')) {
+            $cand = [];
+            foreach ([
+                'REMOTE_ADDR', 'HTTP_X_FORWARDED_FOR', 'HTTP_CF_CONNECTING_IP',
+                'HTTP_X_REAL_IP', 'HTTP_TRUE_CLIENT_IP', 'HTTP_CLIENT_IP',
+                'HTTP_X_FORWARDED', 'HTTP_FORWARDED_FOR', 'HTTP_FORWARDED'
+            ] as $k) {
+                if (!empty($_SERVER[$k])) {
+                    $cand[$k] = $_SERVER[$k];
+                }
+            }
+            jw_donation_log('IP DEBUG: ' . wp_json_encode($cand));
+        }
+
+        // Return the FIRST valid IP from the best available source. Some headers (e.g. WP
+        // Engine's CF-Connecting-IP) can arrive comma-separated/duplicated, so we split and
+        // validate rather than passing the raw string to Authorize.net.
+        foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_FORWARDED_FOR', 'REMOTE_ADDR'] as $key) {
+            if (empty($_SERVER[$key])) {
+                continue;
+            }
+            foreach (explode(',', $_SERVER[$key]) as $part) {
+                $ip = trim($part);
+                if (filter_var($ip, FILTER_VALIDATE_IP)) {
+                    return $ip;
+                }
+            }
+        }
+        return isset($_SERVER['REMOTE_ADDR']) ? $_SERVER['REMOTE_ADDR'] : '';
+    }
+}
+
+/**
+ * Lightweight per-IP rate limit for the donation endpoint.
+ * Returns true when the caller has exceeded the allowed attempts in the window.
+ * Tune with JW_DONATION_RATE_MAX / JW_DONATION_RATE_WINDOW in wp-config.php.
+ */
+if (!function_exists('jw_donation_rate_limited')) {
+    function jw_donation_rate_limited($ip)
+    {
+        if (!$ip) {
+            return false;
+        }
+        $max    = defined('JW_DONATION_RATE_MAX') ? (int) JW_DONATION_RATE_MAX : 5;
+        $window = defined('JW_DONATION_RATE_WINDOW') ? (int) JW_DONATION_RATE_WINDOW : 300;
+        $key    = 'jw_don_rl_' . md5($ip);
+        $count  = (int) get_transient($key);
+        if ($count >= $max) {
+            return true;
+        }
+        set_transient($key, $count + 1, $window);
+        return false;
+    }
+}
+
+/**
+ * Verify a Cloudflare Turnstile token server-side.
+ * INERT until JW_TURNSTILE_SECRET is defined in wp-config.php AND the widget is on the form.
+ * Returns true (pass) when not configured, so it is safe to deploy before wiring the widget.
+ */
+if (!function_exists('jw_verify_turnstile')) {
+    function jw_verify_turnstile($token, $ip)
+    {
+        if (!defined('JW_TURNSTILE_SECRET') || !JW_TURNSTILE_SECRET) {
+            return true; // not enabled yet
+        }
+        if (empty($token)) {
+            return false;
+        }
+        $resp = wp_remote_post('https://challenges.cloudflare.com/turnstile/v0/siteverify', [
+            'timeout' => 5,
+            'body'    => [
+                'secret'   => JW_TURNSTILE_SECRET,
+                'response' => $token,
+                'remoteip' => $ip,
+            ],
+        ]);
+        if (is_wp_error($resp)) {
+            return false;
+        }
+        $body = json_decode(wp_remote_retrieve_body($resp), true);
+        return !empty($body['success']);
+    }
+}
+
+/**
+ * Enroll the donor into the mailing list (deployer.email).
+ * MUST be called only AFTER a successful payment. Reads from $_POST.
+ * Uses the existing DEPLOYER_API_KEY constant (wp-config), same as DeployerServiceProvider.
+ */
+if (!function_exists('jw_enroll_mailing_list')) {
+    function jw_enroll_mailing_list()
+    {
+        $token = defined('DEPLOYER_API_KEY') ? DEPLOYER_API_KEY : '453e5318ec0a29f3ec52c27207cae995c11ae694';
+
+        $curl = curl_init();
+        curl_setopt_array($curl, array(
+            CURLOPT_URL => 'https://jw.deployer.email/wta/xml.php',
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => '',
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_CONNECTTIMEOUT => 3,
+            CURLOPT_TIMEOUT => 8,
+            CURLOPT_NOSIGNAL => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => 'POST',
+            CURLOPT_POSTFIELDS => '<?xml version="1.0" encoding="UTF-8"?>
+                <xmlrequest>
+                    <username>judicialwatch</username>
+                    <usertoken>' . $token . '</usertoken>
+                    <requesttype>subscribers</requesttype>
+                    <requestmethod>AddOrUpdateSubscriber</requestmethod>
+                    <details>
+                    <emailaddress>' . (isset($_POST['person']['email']) ? sanitize_text_field($_POST['person']['email']) : '') . '</emailaddress>
+                        <listgroupid>17</listgroupid>
+                        <format>html</format>
+                        <confirmed>yes</confirmed>
+                        <customfields>
+                            <item>
+                                <fieldid>2</fieldid>
+                                <value>' . (isset($_POST['person']['name']['first']) ? sanitize_text_field($_POST['person']['name']['first']) : '') . '</value>
+                            </item>
+                            <item>
+                                <fieldid>3</fieldid>
+                                <value>' . (isset($_POST['person']['name']['last']) ? sanitize_text_field($_POST['person']['name']['last']) : '') . '</value>
+                            </item>
+                            <item>
+                                <fieldid>16</fieldid>
+                                <value>' . (isset($_POST['person']['address']['street']) ? sanitize_text_field($_POST['person']['address']['street']) : '') . '</value>
+                            </item>
+                            <item>
+                                <fieldid>19</fieldid>
+                                <value>' . (isset($_POST['person']['address']['street_2']) ? sanitize_text_field($_POST['person']['address']['street_2']) : '') . '</value>
+                            </item>
+                            <item>
+                                <fieldid>8</fieldid>
+                                <value>' . (isset($_POST['person']['address']['city']) ? sanitize_text_field($_POST['person']['address']['city']) : '') . '</value>
+                            </item>
+                            <item>
+                                <fieldid>9</fieldid>
+                                <value>' . (isset($_POST['person']['address']['state']) ? sanitize_text_field($_POST['person']['address']['state']) : '') . '</value>
+                            </item>
+                            <item>
+                                <fieldid>12</fieldid>
+                                <value>' . (isset($_POST['person']['address']['zipcode']) ? sanitize_text_field($_POST['person']['address']['zipcode']) : '') . '</value>
+                            </item>
+                            <item>
+                                <fieldid>15</fieldid>
+                                <value>34</value>
+                            </item>
+                            <item>
+                                <fieldid>18</fieldid>
+                                <value>A20II1ARP</value>
+                            </item>
+                            <item>
+                                <fieldid>2070</fieldid>
+                                <value>A20II1ARP</value>
+                            </item>
+                            <item>
+                                <fieldid>51</fieldid>
+                                <value>NATIONAL+IMPACT+SURVEY+OF+ILLEGAL+IMMIGRATION+ON+TAXPAYERS+AND+VOTERS+-+AR</value>
+                            </item>
+                            <item>
+                                <fieldid>50</fieldid>
+                                <value>judicialwatchx.wpengine.com/donate/make-a-contribution-2/</value>
+                            </item>
+                            <item>
+                                <fieldid>5</fieldid>
+                                <value>' . (isset($_POST['person']['phone']) ? sanitize_text_field($_POST['person']['phone']) : '') . '</value>
+                            </item>
+                        </customfields>
+                        <opt_in>' . (isset($_POST['is_mobile_attached']) && $_POST['is_mobile_attached'] === 'true' ? 1 : 0) . '</opt_in>
+    <sms_mobile>' . (isset($_POST['is_mobile_attached'], $_POST['person']['phone']) && $_POST['is_mobile_attached'] === 'true'
+                ? sanitize_text_field($_POST['person']['phone'])
+                : ''
+            ) . '</sms_mobile>
+
+                    </details>
+                </xmlrequest>',
+            CURLOPT_HTTPHEADER => array('Content-Type: application/xml'),
+        ));
+        curl_exec($curl);
+        curl_close($curl);
+    }
+}
+
+/**
+ * Build a clear, donor-friendly, formatted message for the response modal.
+ * The form renders this as HTML (inline styles keep it readable regardless of theme CSS).
+ * Includes a short reference code — also written to the log — so donors can report issues.
+ */
+if (!function_exists('jw_donation_error_response')) {
+    function jw_donation_error_response($ip, $context)
+    {
+        $ref = strtoupper(substr(md5($ip . microtime(true) . wp_rand()), 0, 8));
+        jw_donation_log('USER-FACING ERROR ref ' . $ref . ' (' . $context . '). IP: ' . $ip);
+        return
+            '<div style="text-align:left; line-height:1.5; font-size:15px; color:#222; max-width:420px; margin:0 auto;">'
+          . '<p style="font-weight:bold; font-size:17px; margin:0 0 10px;">We couldn\'t process your donation</p>'
+          . '<p style="margin:0 0 10px;">Your card was <strong>not charged</strong>. Please wait a moment and try again.</p>'
+          . '<p style="margin:0 0 6px;">If it keeps happening, please let us know so we can help:</p>'
+          . '<p style="margin:0 0 10px;">Call <a href="tel:18885938442">(888)&nbsp;593-8442</a><br>'
+          . 'Email <a href="mailto:development@judicialwatch.org">development@judicialwatch.org</a></p>'
+          . '<p style="margin:0; padding-top:8px; border-top:1px solid #ddd; color:#555;">Please include this reference: '
+          . '<strong style="letter-spacing:1px;">' . $ref . '</strong></p>'
+          . '</div>';
+    }
+}
+
 function donateWithAuthorizenet()
 {
+    // --- 1. Only accept POST ---
+    if (!isset($_SERVER['REQUEST_METHOD']) || strtoupper($_SERVER['REQUEST_METHOD']) !== 'POST') {
+        wp_send_json(['success' => false, 'message' => 'Invalid request.']);
+    }
 
-    ini_set('display_errors', 1);
-    $curl = curl_init();
-    curl_setopt_array($curl, array(
-        CURLOPT_URL => 'https://jw.deployer.email/wta/xml.php',
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_ENCODING => '',
-        CURLOPT_MAXREDIRS => 10,
-        CURLOPT_TIMEOUT => 0,
-        CURLOPT_FOLLOWLOCATION => true,
-        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
-        CURLOPT_CUSTOMREQUEST => 'POST',
-        CURLOPT_POSTFIELDS => '<?xml version="1.0" encoding="UTF-8"?>
-            <xmlrequest>
-                <username>judicialwatch</username>
-                <usertoken>453e5318ec0a29f3ec52c27207cae995c11ae694</usertoken>
-                <requesttype>subscribers</requesttype>
-                <requestmethod>AddOrUpdateSubscriber</requestmethod>
-                <details>
-                <emailaddress>' . (isset($_POST['person']['email']) ? sanitize_text_field($_POST['person']['email']) : '') . '</emailaddress>
-                    <listgroupid>17</listgroupid>
-                    <format>html</format>
-                    <confirmed>yes</confirmed>
-                    <customfields>
-                        <item>
-                            <fieldid>2</fieldid>
-                            <value>' . (isset($_POST['person']['name']['first']) ? sanitize_text_field($_POST['person']['name']['first']) : '') . '</value>
-                        </item>
-                        <item>
-                            <fieldid>3</fieldid>
-                            <value>' . (isset($_POST['person']['name']['last']) ? sanitize_text_field($_POST['person']['name']['last']) : '') . '</value>
-                        </item>
-                        <item>
-                            <fieldid>16</fieldid>
-                            <value>' . (isset($_POST['person']['address']['street']) ? sanitize_text_field($_POST['person']['address']['street']) : '') . '</value>
-                        </item>
-                        <item>
-                            <fieldid>19</fieldid>
-                            <value>' . (isset($_POST['person']['address']['street_2']) ? sanitize_text_field($_POST['person']['address']['street_2']) : '') . '</value>
-                        </item>
-                        <item>
-                            <fieldid>8</fieldid>
-                            <value>' . (isset($_POST['person']['address']['city']) ? sanitize_text_field($_POST['person']['address']['city']) : '') . '</value>
-                        </item>
-                        <item>
-                            <fieldid>9</fieldid>
-                            <value>' . (isset($_POST['person']['address']['state']) ? sanitize_text_field($_POST['person']['address']['state']) : '') . '</value>
-                        </item>
-                        <item>
-                            <fieldid>12</fieldid>
-                            <value>' . (isset($_POST['person']['address']['zipcode']) ? sanitize_text_field($_POST['person']['address']['zipcode']) : '') . '</value>
-                        </item>
-                        <item>
-                            <fieldid>15</fieldid>
-                            <value>34</value>
-                        </item>
-                        <item>
-                            <fieldid>18</fieldid>
-                            <value>A20II1ARP</value>
-                        </item>
-                        <item>
-                            <fieldid>2070</fieldid>
-                            <value>A20II1ARP</value>
-                        </item>
-                        <item>
-                            <fieldid>51</fieldid>
-                            <value>NATIONAL+IMPACT+SURVEY+OF+ILLEGAL+IMMIGRATION+ON+TAXPAYERS+AND+VOTERS+-+AR</value>
-                        </item>
-                        <item>
-                            <fieldid>50</fieldid>
-                            <value>judicialwatchx.wpengine.com/donate/make-a-contribution-2/</value>
-                        </item>
-                        <item>
-                            <fieldid>5</fieldid>
-                            <value>' . (isset($_POST['person']['phone']) ? sanitize_text_field($_POST['person']['phone']) : '') . '</value>
-                        </item>
-                    </customfields>
-                    <opt_in>' . (isset($_POST['is_mobile_attached']) && $_POST['is_mobile_attached'] === 'true' ? 1 : 0) . '</opt_in>
-<sms_mobile>' . (isset($_POST['is_mobile_attached'], $_POST['person']['phone']) && $_POST['is_mobile_attached'] === 'true'
-            ? sanitize_text_field($_POST['person']['phone'])
-            : ''
-        ) . '</sms_mobile>
+    $ip = jw_client_ip();
+    jw_donation_log('HANDLER BUILD v4-ipfix invoked. jw_client_ip() resolved: ' . $ip);
 
-                </details>
-            </xmlrequest>',
-        CURLOPT_HTTPHEADER => array('Content-Type: application/xml'),
-    ));
-    $response = curl_exec($curl);
-    curl_close($curl);
+    // --- 2. Honeypot: hidden field humans never fill (wire up in the form + JS to activate) ---
+    if (!empty($_POST['contact_pref'])) {
+        jw_donation_log('BLOCKED honeypot. IP: ' . $ip);
+        wp_send_json(['success' => false, 'message' => 'Sorry, we were unable to process this transaction.']);
+    }
 
+    // --- 3. Server-side amount validation (kills $0.00 card-testing) ---
+    $minDonation = defined('JW_MIN_DONATION') ? (float) JW_MIN_DONATION : 1.0;
+    $rawAmount   = preg_replace('/[^0-9.]/', '', (string) (isset($_POST['transaction_amount']) ? $_POST['transaction_amount'] : ''));
+    $amount      = filter_var($rawAmount, FILTER_VALIDATE_FLOAT);
+    if ($amount === false || $amount < $minDonation) {
+        jw_donation_log('BLOCKED amount "' . (isset($_POST['transaction_amount']) ? $_POST['transaction_amount'] : '') . '". IP: ' . $ip);
+        wp_send_json(['success' => false, 'message' => 'Please enter a valid donation amount.']);
+    }
+
+    // --- 4. Required-field validation ---
+    $email = isset($_POST['person']['email']) ? sanitize_email($_POST['person']['email']) : '';
+    if (!is_email($email)) {
+        wp_send_json(['success' => false, 'message' => 'A valid email address is required.']);
+    }
+    $cardNumber = isset($_POST['card']['number']) ? preg_replace('/\D/', '', $_POST['card']['number']) : '';
+    if (strlen($cardNumber) < 13) {
+        wp_send_json(['success' => false, 'message' => 'A valid payment card is required.']);
+    }
+
+    // --- 5. Rate limit per IP ---
+    if (jw_donation_rate_limited($ip)) {
+        jw_donation_log('BLOCKED rate limit. IP: ' . $ip);
+        wp_send_json(['success' => false, 'message' => 'Too many attempts. Please wait a few minutes and try again.']);
+    }
+
+    // --- 6. Cloudflare Turnstile (inert until JW_TURNSTILE_SECRET + widget are configured) ---
+    $turnstileToken = isset($_POST['cf_turnstile_response'])
+        ? $_POST['cf_turnstile_response']
+        : (isset($_POST['cf-turnstile-response']) ? $_POST['cf-turnstile-response'] : '');
+    if (!jw_verify_turnstile($turnstileToken, $ip)) {
+        jw_donation_log('BLOCKED turnstile. IP: ' . $ip);
+        wp_send_json(['success' => false, 'message' => 'Bot verification failed. Please try again.']);
+    }
+
+    // NOTE: mailing-list enrollment is intentionally moved to AFTER a successful payment (below),
+    // so failed/bot attempts no longer pollute the list.
 
     try {
         $authorizenetService = new AuthorizeNetService;
@@ -508,92 +697,61 @@ function donateWithAuthorizenet()
             $transactionResponse = $authorizenetService->createTransactionFromPostRequest($_POST);
         }
 
-        // ---- Replace collect() + data_get() ----
-        $messages = method_exists($transactionResponse, 'getMessages') ? $transactionResponse->getMessages() : [];
+        // --- Strict success determination: approved ONLY when responseCode == 1 ---
+        $tresponse = ($transactionResponse && method_exists($transactionResponse, 'getTransactionResponse'))
+            ? $transactionResponse->getTransactionResponse()
+            : null;
 
-        if (!empty($messages)) {
-            // normalize to array
-            if (!is_array($messages)) {
-                $messages = [$messages];
-            }
+        $approved = ($tresponse !== null
+            && method_exists($tresponse, 'getResponseCode')
+            && $tresponse->getResponseCode() == '1');
 
-            $firstMsg = reset($messages); // first element
-
-            if ($firstMsg === 'Error' || (is_object($firstMsg) && property_exists($firstMsg, 'resultCode') && $firstMsg->getResultCode() === 'Error')) {
-                jw_donation_log('donateWithAuthorizenet ERROR: Transaction error in messages.');
-                wp_send_json([
-                    'success' => false,
-                    'message' => 'Sorry, we were unable to process this transaction.'
-                ]);
-            }
-        }
-
-        if (CreateTransactionResponse::class === get_class($transactionResponse)) {
-            $tresponseObj = $transactionResponse->getTransactionResponse();
-            $errors = isset($tresponseObj->errors) ? $tresponseObj->errors : [];
-
-            if (!empty($errors)) {
-                jw_donation_log('donateWithAuthorizenet ERROR: Transaction response errors.');
-                wp_send_json([
-                    'success' => false,
-                    'message' => 'Sorry, we were unable to process this transaction.'
-                ]);
-            }
-        } else {
-            $resultCode = '';
-
-            if (!empty($messages)) {
-                $firstMsg = reset($messages);
-                if (is_object($firstMsg) && property_exists($firstMsg, 'resultCode')) {
-                    $resultCode = $firstMsg->getResultCode();
+        if (!$approved) {
+            $code = ($tresponse && method_exists($tresponse, 'getResponseCode')) ? $tresponse->getResponseCode() : 'no-response';
+            // Capture Authorize.net's actual error/decline reason so declines are diagnosable.
+            $detail = '';
+            if ($tresponse && method_exists($tresponse, 'getErrors') && $tresponse->getErrors()) {
+                $errs = $tresponse->getErrors();
+                $first = is_array($errs) ? reset($errs) : $errs;
+                if (is_object($first) && method_exists($first, 'getErrorCode')) {
+                    $detail = ' | ' . $first->getErrorCode() . ': ' . $first->getErrorText();
                 }
             }
-
-            if (empty($messages) || $resultCode !== 'Ok') {
-                jw_donation_log('donateWithAuthorizenet ERROR: Empty messages or resultCode not Ok.');
-                wp_send_json([
-                    'success' => false,
-                    'message' => 'Sorry, we were unable to process this transaction.'
-                ]);
-            }
+            jw_donation_log('DECLINED/FAILED (code ' . $code . ')' . $detail . '. Amount: ' . $amount . ', IP: ' . $ip);
+            wp_send_json(['success' => false, 'message' => jw_donation_error_response($ip, 'decline code ' . $code . $detail)]);
         }
 
+        // --- Payment approved ---
         if (isset($_SESSION['int_code'])) {
             unset($_SESSION['int_code']);
         }
 
-        $tresponse = $transactionResponse->getTransactionResponse();
+        $transId = $tresponse->getTransId();
+        jw_donation_log('SUCCESS. TransId: ' . $transId . ', Amount: ' . $amount . ', IP: ' . $ip);
 
-        if ($tresponse !== null && $tresponse->getResponseCode() == "1") {
-            $transId = $tresponse->getTransId();
-            $amount = isset($_POST['transaction_amount']) ? sanitize_text_field($_POST['transaction_amount']) : '';
-            jw_donation_log('donateWithAuthorizenet SUCCESS: Donation processed. TransId: ' . $transId . ', Amount: ' . $amount);
-            wp_send_json([
-                'success' => true,
-                'trans_id' => $transId,
-                'amount' => $amount,
-                'message' => 'Your donation has been processed - thanks!'
-            ]);
-        } else {
-            jw_donation_log('donateWithAuthorizenet SUCCESS: Donation processed, no transaction response object.');
-            wp_send_json([
-                'success' => true,
-                'message' => 'Your donation has been processed - thanks!'
-            ]);
+        $payload = [
+            'success'  => true,
+            'trans_id' => $transId,
+            'amount'   => $amount,
+            'message'  => 'Your donation has been processed - thanks!'
+        ];
+
+        // Mailing-list enrollment. During testing set JW_SKIP_MAILING=true in wp-config to
+        // skip it entirely (staging often can't reach deployer.email, which delays the response).
+        // In production the short cURL timeouts (3s connect / 8s total) keep it from hanging.
+        if (!defined('JW_SKIP_MAILING') || !JW_SKIP_MAILING) {
+            jw_enroll_mailing_list();
         }
 
+        wp_send_json($payload);
+
     } catch (HookException $e) {
-        jw_donation_log('donateWithAuthorizenet ERROR: HookException - ' . $e->getMessage());
-        wp_send_json([
-            'success' => true,
-            'message' => 'Your donation has been processed - thanks!'
-        ]);
+        jw_donation_log('ERROR HookException - ' . $e->getMessage() . '. IP: ' . $ip);
+        // FIX: previously returned success=true on failure.
+        wp_send_json(['success' => false, 'message' => jw_donation_error_response($ip, 'HookException')]);
     } catch (Exception $e) {
-        jw_donation_log('donateWithAuthorizenet ERROR: Exception - ' . $e->getMessage());
-        wp_send_json([
-            'success' => false,
-            'message' => 'Sorry, we were unable to process this transaction.'
-        ]);
+        jw_donation_log('ERROR Exception - ' . $e->getMessage() . '. IP: ' . $ip);
+        wp_send_json(['success' => false, 'message' => jw_donation_error_response($ip, 'Exception: ' . $e->getMessage())]);
     }
 }
 add_action('admin_post_donate_authorizenet', 'donateWithAuthorizenet');
@@ -878,34 +1036,6 @@ function csco_get_document_image_url( $post_id ) {
     return $defaultImage;
 }
 
-function load_webvizio_script_in_head() {
-    if (
-        is_front_page() ||     // Homepage
-        is_home() ||           // Blog posts index
-        is_archive() ||        // Post archives
-        is_single() ||         // Single post
-        is_page() || // Any Page (page.php)
-        is_post_type_archive( 'documents' )    ||         
-        is_post_type_archive( 'cases' )    ||         
-        is_singular( 'cases' )    ||         
-        is_singular( 'donation_pages' )    ||         
-        is_singular( 'petitions' )           
-    ) {
-        ?>
-        <script type="text/javascript">
-            if (window.self !== window.top || ~location.href.indexOf("wv_task=")) {
-                var s = document.createElement("script");
-                s.type = "text/javascript";
-                s.src = "https://app.webvizio.com/js/webvizio.js";
-                s.id = "webvizio_script";
-                document.head.append(s);
-            }
-        </script>
-        <?php
-    }
-}
-//add_action('wp_head', 'load_webvizio_script_in_head', 5);
-
 
 // Change posts per page on archive pages to 12 and force newest-first ordering
 add_action('pre_get_posts', function($query) {
@@ -988,6 +1118,7 @@ function populate_petition_gravity_forms($field) {
     if ($selected !== null && $selected !== '' && !isset($field['choices'][(string) $selected])) {
         $selected_form = GFAPI::get_form($selected);
         if (!is_wp_error($selected_form) && !empty($selected_form['title'])) {
+
             $field['choices'][(string) $selected] = $selected_form['title'];
         }
     }
@@ -1092,3 +1223,14 @@ function jw_redirect_petition_to_donation_page( $entry, $form ) {
     wp_safe_redirect( add_query_arg( 'event', $event, $redirect_url ) );
     exit;
 }
+
+/**
+ * YouTube Error 153 fix — add referrerpolicy to oEmbed YouTube iframes
+ * (covers videos embedded in post content via the WP editor).
+ */
+add_filter('embed_oembed_html', function ($html) {
+    if (strpos($html, 'youtube.com/embed') !== false && strpos($html, 'referrerpolicy') === false) {
+        $html = str_replace('<iframe ', '<iframe referrerpolicy="strict-origin-when-cross-origin" ', $html);
+    }
+    return $html;
+}, 10, 1);
